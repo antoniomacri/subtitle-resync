@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Subtitle resync</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+        crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-throttle-debounce/1.1/jquery.ba-throttle-debounce.min.js" integrity="sha256-+nuEu243+6BveXk5N+Vbr268G+4FHjUOEcfKaBqfPbc="
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.0/css/bootstrap.css" integrity="sha256-DOf74hXN+SHth9AKN0QEaB1dJImFiaf+YOBo0JKJtLo="
+        crossorigin="anonymous" />
+
+
+    <script>
+        if (!String.prototype.padStart) {
+            String.prototype.padStart = function padStart(targetLength, padString) {
+                targetLength = targetLength >> 0; //truncate if number or convert non-number to 0;
+                padString = String((typeof padString !== 'undefined' ? padString : ' '));
+                if (this.length > targetLength) {
+                    return String(this);
+                }
+                else {
+                    targetLength = targetLength - this.length;
+                    if (targetLength > padString.length) {
+                        padString += padString.repeat(targetLength / padString.length); //append to original to ensure we are longer than needed
+                    }
+                    return padString.slice(0, targetLength) + String(this);
+                }
+            };
+        }
+
+        function process() {
+            var input = $("#input").val();
+            var shiftMillisFirst = ~~$("#shiftMillisFirst").val();
+            var shiftMillisLast = ~~$("#shiftMillisLast").val();
+
+            var input = $("#input").val();
+            if (!input) {
+                return;
+            }
+
+            var firstMillisMatch = /(\d+):(\d+):(\d+),(\d+)/.exec(input);
+            var lastMillisMatch = /(\d+):(\d+):(\d+),(\d+)(?![\s\S]+\d+:\d+:\d+,\d+)/.exec(input);
+            if (typeof (firstMillisMatch) === "undefined" || firstMillisMatch == null || typeof (lastMillisMatch) === "undefined" || lastMillisMatch == null) {
+                return;
+            }
+
+            var firstMillis = (((firstMillisMatch[1] * 60 + ~~firstMillisMatch[2]) * 60) + ~~firstMillisMatch[3]) * 1000 + ~~firstMillisMatch[4];
+            var lastMillis = (((lastMillisMatch[1] * 60 + ~~lastMillisMatch[2]) * 60) + ~~lastMillisMatch[3]) * 1000 + ~~lastMillisMatch[4];
+            console.log("firstMillis: " + firstMillis + " (" + firstMillisMatch[0] + ")");
+            console.log("lastMillis: " + lastMillis + " (" + lastMillisMatch[0] + ")");
+
+            // Calculated from:
+            // result = millis + (shiftMillisFirst * (millis - lastMillis)) / (firstMillis - lastMillis) + (shiftMillisLast * (millis - firstMillis)) / (lastMillis - firstMillis)
+            // considering:
+            // result = millis + shift + deriv * millis;
+            var shift = (shiftMillisFirst * lastMillis - shiftMillisLast * firstMillis) / (lastMillis - firstMillis);
+            var deriv = (shiftMillisLast - shiftMillisFirst) / (lastMillis - firstMillis);
+
+            var output = input.replace(/(\d+):(\d+):(\d+),(\d+)/g, function (match, h, m, s, ms) {
+                var millis = (((h * 60 + ~~m) * 60) + ~~s) * 1000 + ~~ms;
+                var r = millis + shift + deriv * millis;
+                ms = Math.trunc(r % 1000);
+                s = Math.trunc(r = r / 1000) % 60;
+                m = Math.trunc(r = r / 60) % 60;
+                h = Math.trunc(r / 60);
+                return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0") + "," + String(ms).padStart(3, "0");
+            });
+
+            $("#output").val(output);
+        }
+
+        $(function () {
+            $("#input").on('change keyup paste', $.debounce(250, process));
+            $("#shiftMillisFirst").change($.debounce(250, process));
+            $("#shiftMillisLast").change($.debounce(250, process));
+
+            $("#shiftMillisFirst").change(function () {
+                var checked = $("#overrideShiftLast").is(':checked');
+                if (!checked) {
+                    $("#shiftMillisLast").val($("#shiftMillisFirst").val());
+                }
+            });
+
+            $("#overrideShiftLast").change(function () {
+                var checked = $("#overrideShiftLast").is(':checked');
+                $("#shiftMillisLast").prop("disabled", !checked);
+                if (!checked) {
+                    $("#shiftMillisLast").val($("#shiftMillisFirst").val());
+                }
+            });
+        });
+    </script>
+
+</head>
+
+<body>
+    <style>
+        html,
+        body {
+            height: 100%;
+            font-family: Sans-Serif;
+            font-size: 12px;
+        }
+
+        textarea {
+            display: block;
+            font-size: 12px;
+            box-sizing: border-box;
+            height: 98%;
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+            border: 0;
+        }
+
+        .colpart {
+            margin: 1% 0 0 0;
+        }
+
+        .options {
+            height: 96%;
+            padding: 10px;
+        }
+    </style>
+
+    <div class="container-fluid h-100">
+        <div class="row justify-content-center h-100 bg-dark">
+
+            <div class="col-5 colpart">
+                <textarea id="input" placeholder='Put the input SRT here...'></textarea>
+            </div>
+
+            <div class="col-2 bg-light colpart options">
+                <label for="shiftMillisFirst">
+                    Shift the first subtitle by the following millis:
+                </label>
+                <br>
+                <input type="number" name="shiftMillisFirst" id="shiftMillisFirst" value="0">
+                <br>
+                <br>
+
+                <label>
+                    <input type="checkbox" id="overrideShiftLast"> Shift the last subtitle by different millis:
+                </label>
+                <br>
+                <input type="number" name="shiftMillisLast" id="shiftMillisLast" value="0" disabled="disabled">
+                <br>
+            </div>
+
+            <div class="col-5 colpart">
+                <textarea id="output" placeholder='...output will show up here.'></textarea>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
